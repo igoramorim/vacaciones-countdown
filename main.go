@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"os"
 	"time"
 )
@@ -22,15 +24,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	for range time.Tick(1 * time.Second) {
-		timeRemaining := calculateTimeRemaining(vacaciones)
+	g := &game{
+		vacaciones: vacaciones,
+		width:      600,
+		height:     480,
+	}
 
-		if int(timeRemaining.Seconds()) <= 0 {
-			fmt.Println("tu momento llegó, dale!")
-			os.Exit(0)
-		}
-
-		fmt.Println(fmtDuration(timeRemaining))
+	ebiten.SetWindowTitle(fmt.Sprintf("vacaciones countdown to %s", vacaciones.Format(time.DateTime)))
+	if err = ebiten.RunGame(g); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -42,19 +45,54 @@ func parseVacacionesFlag(flag *string) (time.Time, error) {
 
 	now := time.Now()
 	if vacaciones.Before(now) {
-		return time.Time{}, errors.New("you can not salir de vacaciones en el pasado")
+		return time.Time{}, errors.New("you can not salir de vacaciones en el pasado!")
 	}
 
 	return vacaciones, nil
 }
 
-func calculateTimeRemaining(vacaciones time.Time) time.Duration {
-	now := time.Now()
-	return vacaciones.Sub(now)
+type game struct {
+	vacaciones        time.Time
+	timeRemaining     time.Duration
+	vacacionesStarted bool
+	message           string
+	width, height     int
 }
 
-func fmtDuration(d time.Duration) string {
-	total := int(d.Seconds())
+func (g *game) Update() error {
+	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+		return errors.New("too much to wait, right?")
+	}
+
+	g.loop()
+	return nil
+}
+
+func (g *game) Draw(screen *ebiten.Image) {
+	ebitenutil.DebugPrint(screen, g.message)
+}
+
+func (g *game) Layout(w, h int) (int, int) {
+	return g.width, g.height
+}
+
+func (g *game) loop() {
+	if g.vacacionesStarted {
+		return
+	}
+
+	g.timeRemaining = g.vacaciones.Sub(time.Now())
+	if int(g.timeRemaining.Seconds()) < 0 {
+		g.vacacionesStarted = true
+		g.message = `tu momento llegó, dale! \o/`
+		return
+	}
+
+	g.message = g.fmtDuration()
+}
+
+func (g *game) fmtDuration() string {
+	total := int(g.timeRemaining.Seconds())
 	days := total / (60 * 60 * 24)
 	hours := total / (60 * 60) % 24
 	minutes := int(total/60) % 60
